@@ -11,14 +11,15 @@ class Layer:
         if (type == 'last'):
             self.last = True
         
-        self.x = np.zeros((nneuron))
-        self.b = self.x.copy()
-        self.g = self.x.copy()
+        self.a = np.zeros((nneuron))
+        self.z = self.a.copy()
+        self.b = self.a.copy()
         self.nn = nneuron
         if (not self.first):
-            self.w = np.zeros((nneuron, nneuron_m1))
-            self.dxdx_m1 = self.w.copy()
-            self.nn_m1 = nneuron_m1 
+            self.nn_m1 = nneuron_m1
+            self.w = np.zeros((self.nn, self.nn_m1))
+            self.dw = self.w.copy()
+            self.delta = np.zeros((self.nn))
 
         
     def calc_x(self, prevlayer):
@@ -74,6 +75,7 @@ class Layer:
 class NeuralNet:
     def __init__(self, nneuron):
         self.nlayer = len(nneuron)
+        self.x = 0
         self.layer = []
         self.layer.append(
             Layer(nneuron = nneuron[0],
@@ -87,12 +89,55 @@ class NeuralNet:
                       nneuron_m1 = nneuron[i-1],
                       type=type))
 
+
+        
         ## initiate correct output for training
+        ## unsure about these
         self.a = np.zeros(nneuron[-1])
         self.loss = 0.0
         self.damp = 3.
         self.damp2 = 0.01
+        
+    def actf(self, z):
+        return 1./(1+np.exp(-z))
 
+    def dactf(self, a):
+        return a*(1-a)
+
+    def costfunction(self):
+        # assume forward prop is run.
+        nl = self.nlayer
+        cost = -np.sum(    self.y *np.log(    self.layer[nl-1].a) +
+                      (1.0-self.y)*np.log(1.0-self.layer[nl-1].a))
+        return cost
+
+        
+    def init_data(self, X, y):
+        self.X = X
+        self.y = y
+        self.ndata = self.X.shape[0]
+        
+    def forward_prop(self,idat):
+        self.layer[0].a = self.X[:,idat]
+        for i in np.arange(1, self.nlayer):
+            self.layer[i].z = self.layer[i].w.dot(self.layer[i-1].a)
+            self.layer[i].a = self.actf(self.layer[i].z)
+            
+    def backward_prop(self,idat):
+        nl = self.nlayer
+        # set first delta.
+        self.layer[nl-1].delta = self.layer[nl-1].a - self.y[idat,:]
+                                      
+
+        # backprop
+        for i in np.arange(nl-2, 0, -1):
+            self.layer[i].delta = np.dot(self.layer[i+1].w.transpose(),
+                self.layer[i+1].delta)*self.dactf(self.layer[i].a)
+
+        for i in np.arange(nl-1, 0, -1):
+            self.layer[i].dw = self.layer[i].dw + (np.outer(
+                self.layer[i].delta,
+                self.layer[i-1].a))
         
     def init_w_random(self):
         for il in np.arange(1, self.nlayer):
@@ -101,8 +146,12 @@ class NeuralNet:
             nxn = nn*nn_m1
             w = np.reshape(norm.rvs(0.,1.,nxn), (nn,nn_m1))
             self.layer[il].w[:,:] = w[:,:] 
-        
-        
+
+            
+    def reset_dw(self):
+        for i in np.arange(1,self.nlayer):
+            self.layer[i].dw[:,:] = 0.0
+            
     def init_x0(self, x):
         self.layer[0].set_x(x)
 
