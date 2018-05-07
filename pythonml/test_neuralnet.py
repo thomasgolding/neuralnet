@@ -1,4 +1,4 @@
-import neuralnet as n
+import pythonml as n
 import numpy as np
 
 

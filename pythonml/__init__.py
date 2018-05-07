@@ -1,2 +1,2 @@
-from .neural import NeuralNet, Layer
+from .neuralnet import NeuralNet, Layer
 
