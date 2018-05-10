@@ -10,15 +10,18 @@ class Layer:
             self.first = True
         if (type == 'last'):
             self.last = True
-        
-        self.a = np.zeros((nneuron))
-        self.z = self.a.copy()
-        self.b = self.a.copy()
+
         self.nn = nneuron
+            
+        self.a = np.zeros((self.nn))
+        self.z = np.zeros((self.nn))
+        
         if (not self.first):
             self.nn_m1 = nneuron_m1
             self.w = np.zeros((self.nn, self.nn_m1))
             self.dw = self.w.copy()
+            self.b = np.zeros((self.nn))
+            self.db = self.b.copy()
             self.delta = np.zeros((self.nn))
 
         
@@ -73,10 +76,22 @@ class Layer:
         return self.b
  
 class NeuralNet:
-    def __init__(self, nneuron):
+    def __init__(self, nneuron, lrate = 0.1,
+                     conv_reldiff = 1.e-3, maxiter=100):
         self.nlayer = len(nneuron)
+        self.nneuron = nneuron
+        self.lrate = lrate
+        self.conv_reldiff = conv_reldiff
+        self.maxiter = maxiter
+        self.cf = np.zeros((self.maxiter))
+        self.final_it = 0
+        
         self.x = 0
         self.layer = []
+
+        ## add the bias term to the zeroth neuron
+        nneuron = np.array(nneuron) 
+        
         self.layer.append(
             Layer(nneuron = nneuron[0],
                   nneuron_m1 = 0, type = 'first'))
@@ -104,24 +119,39 @@ class NeuralNet:
     def dactf(self, a):
         return a*(1-a)
 
+    def predict(self, X):
+        self.forward_prop(X = X)
+        return self.layer[self.nlayer-1].a
+
+        
     def costfunction(self):
         # assume forward prop is run.
+        ## need to add idat-functionality.
         nl = self.nlayer
-        cost = -np.sum(    self.y *np.log(    self.layer[nl-1].a) +
-                      (1.0-self.y)*np.log(1.0-self.layer[nl-1].a))
+        aa = self.layer[nl-1].a
+        cost = -np.sum(    self.y *np.log(    aa) +
+                      (1.0-self.y)*np.log(1.0-aa))
+        cost = cost/self.ndata
+        
         return cost
 
         
     def init_data(self, X, y):
         self.X = X
         self.y = y
-        self.ndata = self.X.shape[0]
+        self.ndata = self.X.shape[1]
         
-    def forward_prop(self,idat):
-        self.layer[0].a = self.X[:,idat]
+    def forward_prop(self, idat=None, X=None):
+        if idat == None:
+            self.layer[0].a = X
+        else:
+            self.layer[0].a = self.X[:,idat]
+            
         for i in np.arange(1, self.nlayer):
-            self.layer[i].z = self.layer[i].w.dot(self.layer[i-1].a)
+            self.layer[i].z = (self.layer[i].w.dot(self.layer[i-1].a)
+                                   + self.layer[i].b)
             self.layer[i].a = self.actf(self.layer[i].z)
+            
             
     def backward_prop(self,idat):
         nl = self.nlayer
@@ -131,26 +161,69 @@ class NeuralNet:
 
         # backprop
         for i in np.arange(nl-2, 0, -1):
-            self.layer[i].delta = np.dot(self.layer[i+1].w.transpose(),
+            delta_tmp = np.dot(self.layer[i+1].w.transpose(),
                 self.layer[i+1].delta)*self.dactf(self.layer[i].a)
-
+            self.layer[i].delta = delta_tmp
+            
         for i in np.arange(nl-1, 0, -1):
             self.layer[i].dw = self.layer[i].dw + (np.outer(
                 self.layer[i].delta,
                 self.layer[i-1].a))
+            self.layer[i].db = self.layer[i].db + self.layer[i].delta 
         
-    def init_w_random(self):
-        for il in np.arange(1, self.nlayer):
-            nn = self.layer[il].nn
-            nn_m1 = self.layer[il].nn_m1
+    def init_w_b_random(self):
+        for l in self.layer[1:]:
+            nn = l.nn
+            nn_m1 = l.nn_m1
             nxn = nn*nn_m1
             w = np.reshape(norm.rvs(0.,1.,nxn), (nn,nn_m1))
-            self.layer[il].w[:,:] = w[:,:] 
+            l.w[:,:] = w[:,:]
+            l.b = norm.rvs(0,1,nn)
 
-            
-    def reset_dw(self):
+
+    def reset_dw_db(self):
         for i in np.arange(1,self.nlayer):
             self.layer[i].dw[:,:] = 0.0
+            self.layer[i].db[:] = 0.0
+
+
+    def train_model(self):
+        # init training
+        self.init_w_random()
+
+        ## iteration control
+        reldiff = self.conv_reldiff
+        maxiter = self.maxiter
+        dcost = 2.0*reldiff
+        cost = 0.0
+        cost_prev = 0.0
+        it = 0
+
+        while ((dcost > reldiff) and (it < maxiter)):
+            print(it)
+            ## compute dw
+            self.reset_dw_db_db()
+            cost = 0.0
+            for idat in np.arange(self.ndata):
+                self.forward_prop(idat = idat)
+                self.backward_prop(idat = idat)
+                cost = cost + self.costfunction()
+
+            ## update dw
+            for layer in self.layer[1:self.nlayer]:
+                layer.w = layer.w - self.lrate*layer.dw
+                layer.b = layer.b - self.lrate*layer.db
+
+            # do another iteration?
+            if (it == 0):
+                cost_prev = cost/(2.0*dcost + 1.0)
+            dcost = np.abs((cost - cost_prev)/cost_prev)
+            dcost_prev = cost
+            self.cf[it] = cost
+            it = it + 1
+            
+        self.final_it = it    
+            
             
     def init_x0(self, x):
         self.layer[0].set_x(x)
@@ -165,7 +238,19 @@ class NeuralNet:
         for i in np.arange(1,self.nlayer):
             self.layer[i].calc_x(self.layer[i-1])
 
-    def load_training_set(self, x0, a):
+
+
+
+  
+
+
+
+
+
+
+
+            
+    def obsolete_load_training_set(self, x0, a):
         n_in = self.layer[0].nn
         n_out = self.layer[-1].nn
         if ((np.size(x0) != n_in) or (np.size(a) != n_out)):
@@ -181,7 +266,7 @@ class NeuralNet:
         
         
 
-    def dxdw(self, lx, jx, lw, jw, iw):
+    def obsolete_dxdw(self, lx, jx, lw, jw, iw):
         """Calculate dxdw.
         lx, jx, lw, jw, iw refer to which 
         """        
@@ -206,11 +291,7 @@ class NeuralNet:
             return(deriv)
 
             
-    def testfunc(self):
-         print('sadf')
-
-        
-    def train_net(self, x0, a):
+    def obsolete_train_net(self, x0, a):
         self.load_training_set(x0, a)
         self.calc_all_x()
         loss = np.sum((self.layer[-1].x - a)**2.0)
