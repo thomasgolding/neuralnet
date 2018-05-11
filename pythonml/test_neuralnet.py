@@ -3,25 +3,30 @@ import numpy as np
 
 
 def test_deriv():
-    nnet = pml.NeuralNet(nneuron = (2,30,24,30,21,32,2))
-    X = np.array([[-2],[3]])
-    y = np.array([[1,0]])
+    nnet = pml.NeuralNet(nneuron = (2,3,31,2), lam_reg=10)
+    X = np.array([[-2,3], [-1,4],[0,5]])
+    y = np.array([[1,0], [1,0], [0,1] ])
     nnet.init_data(X, y)
     
     ## get derivatives = fill nnet.layer[i].dw.
-    nnet.reset_dw_db()
     nnet.init_w_b_random()
-    idat = 0
-    nnet.forward_prop(idat=idat)
-    nnet.backward_prop(idat=idat)
-                
-        
+
+    def cost_deriv():
+        cost = 0.0
+        nnet.reset_dw_db()
+        for idat in np.arange(nnet.ndata):
+            nnet.forward_prop(idat=idat)
+            cost = cost + nnet.costfunction(idat=idat)
+            nnet.backward_prop(idat=idat)
+        for l in nnet.layer[1:]:
+            l.dw = l.dw + (nnet.lam_reg/nnet.ndata*l.w)
+        return cost
+    cost0 = cost_deriv()
     ## compute numerical derivatives.
     ## save the num derivatives in
     d = 1.e-4
     numderw = []
     numderb = []
-    cost0 = nnet.costfunction(idat = 0)
         
     for l in np.arange(1, nnet.nlayer):
         w0 = nnet.layer[l].w.copy()
@@ -34,8 +39,7 @@ def test_deriv():
             deltab = tmpb[i]*d
             tmpb[i] = tmpb[i] + deltab
             nnet.layer[l].b = tmpb.copy()
-            nnet.forward_prop(idat = 0)
-            cost = nnet.costfunction(idat = 0)
+            cost = cost_deriv()
             db0[i] = (cost - cost0)/deltab
             nnet.layer[l].b = b0.copy()
             for j in np.arange(nnet.layer[l-1].nn):
@@ -43,8 +47,7 @@ def test_deriv():
                 deltaw = tmp[i,j]*d
                 tmp[i,j] = tmp[i,j] + deltaw
                 nnet.layer[l].w = tmp.copy()
-                nnet.forward_prop(idat = idat)
-                cost = nnet.costfunction(idat = 0)
+                cost = cost_deriv()
                 dw0[i,j] = (cost-cost0)/deltaw
                 nnet.layer[l].w = w0.copy()
         numderb.append(db0)

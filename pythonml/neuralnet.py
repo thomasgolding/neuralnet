@@ -27,10 +27,12 @@ class Layer:
 
 class NeuralNet:
     def __init__(self, nneuron, lrate = 0.1,
-                     conv_reldiff = 1.e-3, maxiter=100):
+                     conv_reldiff = 1.e-3, maxiter=100,
+                     lam_reg = 1e3):
         self.nlayer = len(nneuron)
         self.nneuron = nneuron
         self.lrate = lrate
+        self.lam_reg = lam_reg
         self.conv_reldiff = conv_reldiff
         self.maxiter = maxiter
         self.cf = np.zeros((self.maxiter))
@@ -80,9 +82,12 @@ class NeuralNet:
         nl = self.nlayer
         aa = self.layer[nl-1].a
         yy = self.y[idat,:]
-        cost = -np.sum(     yy *np.log(    aa) +
-                       (1.0-yy)*np.log(1.0-aa))
-        cost = cost/self.ndata
+        cost0 = -np.sum(     yy *np.log(    aa) +
+                        (1.0-yy)*np.log(1.0-aa))
+        cost_reg = 0
+        for l in self.layer[1:]:
+            cost_reg = cost_reg + self.lam_reg * 0.5 * np.sum(l.w**2)
+        cost = (cost0 + cost_reg/self.ndata)/self.ndata
         
         return cost
 
@@ -90,13 +95,13 @@ class NeuralNet:
     def init_data(self, X, y):
         self.X = X
         self.y = y
-        self.ndata = self.X.shape[1]
+        self.ndata = self.X.shape[0]
         
     def forward_prop(self, idat=None, X=None):
         if idat == None:
             self.layer[0].a = X
         else:
-            self.layer[0].a = self.X[:,idat]
+            self.layer[0].a = self.X[idat,:]
             
         for i in np.arange(1, self.nlayer):
             self.layer[i].z = (self.layer[i].w.dot(self.layer[i-1].a)
@@ -118,9 +123,9 @@ class NeuralNet:
             
         for i in np.arange(nl-1, 0, -1):
             self.layer[i].dw = self.layer[i].dw + (np.outer(
-                self.layer[i].delta,
-                self.layer[i-1].a))
-            self.layer[i].db = self.layer[i].db + self.layer[i].delta 
+                self.layer[i].delta, self.layer[i-1].a))/self.ndata
+            self.layer[i].db = self.layer[i].db + (
+                self.layer[i].delta)/self.ndata 
         
     def init_w_b_random(self):
         for l in self.layer[1:]:
@@ -138,7 +143,7 @@ class NeuralNet:
             self.layer[i].db[:] = 0.0
 
 
-    def train_model(self):
+    def train_model(self, verb=True):
         # init training
         self.init_w_b_random()
 
@@ -151,17 +156,21 @@ class NeuralNet:
         it = 0
 
         while ((dcost > reldiff) and (it < maxiter)):
-            print(it)
             ## compute dw
             self.reset_dw_db()
             cost = 0.0
+            # compute dw from cost0.
             for idat in np.arange(self.ndata):
                 self.forward_prop(idat = idat)
                 self.backward_prop(idat = idat)
                 cost = cost + self.costfunction(idat=idat)
 
-            ## update dw
             for layer in self.layer[1:self.nlayer]:
+                ## dw holds deriv from cost0.
+                ## add dw contribution from regularization term
+                dw_reg = self.lam_reg*layer.w/self.ndata
+                layer.dw = layer.dw + dw_reg
+                ## update the weights.
                 layer.w = layer.w - self.lrate*layer.dw
                 layer.b = layer.b - self.lrate*layer.db
 
@@ -169,9 +178,12 @@ class NeuralNet:
             if (it == 0):
                 cost_prev = cost/(2.0*dcost + 1.0)
             dcost = np.abs((cost - cost_prev)/cost_prev)
-            dcost_prev = cost
+            cost_prev = cost
             self.cf[it] = cost
             it = it + 1
+            if (verb == True):
+                print(str(it-1)+' '+str(cost)+' '+
+                          str(cost_prev) +' '+ str(dcost))
             
         self.final_it = it    
             
