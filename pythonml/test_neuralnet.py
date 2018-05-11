@@ -21,7 +21,7 @@ def test_deriv():
     d = 1.e-4
     numderw = []
     numderb = []
-    cost0 = nnet.costfunction()
+    cost0 = nnet.costfunction(idat = 0)
         
     for l in np.arange(1, nnet.nlayer):
         w0 = nnet.layer[l].w.copy()
@@ -35,7 +35,7 @@ def test_deriv():
             tmpb[i] = tmpb[i] + deltab
             nnet.layer[l].b = tmpb.copy()
             nnet.forward_prop(idat = 0)
-            cost = nnet.costfunction()
+            cost = nnet.costfunction(idat = 0)
             db0[i] = (cost - cost0)/deltab
             nnet.layer[l].b = b0.copy()
             for j in np.arange(nnet.layer[l-1].nn):
@@ -44,7 +44,7 @@ def test_deriv():
                 tmp[i,j] = tmp[i,j] + deltaw
                 nnet.layer[l].w = tmp.copy()
                 nnet.forward_prop(idat = idat)
-                cost = nnet.costfunction()
+                cost = nnet.costfunction(idat = 0)
                 dw0[i,j] = (cost-cost0)/deltaw
                 nnet.layer[l].w = w0.copy()
         numderb.append(db0)

@@ -74,13 +74,14 @@ class NeuralNet:
         return self.layer[self.nlayer-1].a
 
         
-    def costfunction(self):
+    def costfunction(self, idat):
         # assume forward prop is run.
         ## need to add idat-functionality.
         nl = self.nlayer
         aa = self.layer[nl-1].a
-        cost = -np.sum(    self.y *np.log(    aa) +
-                      (1.0-self.y)*np.log(1.0-aa))
+        yy = self.y[idat,:]
+        cost = -np.sum(     yy *np.log(    aa) +
+                       (1.0-yy)*np.log(1.0-aa))
         cost = cost/self.ndata
         
         return cost
@@ -139,7 +140,7 @@ class NeuralNet:
 
     def train_model(self):
         # init training
-        self.init_w_random()
+        self.init_w_b_random()
 
         ## iteration control
         reldiff = self.conv_reldiff
@@ -152,12 +153,12 @@ class NeuralNet:
         while ((dcost > reldiff) and (it < maxiter)):
             print(it)
             ## compute dw
-            self.reset_dw_db_db()
+            self.reset_dw_db()
             cost = 0.0
             for idat in np.arange(self.ndata):
                 self.forward_prop(idat = idat)
                 self.backward_prop(idat = idat)
-                cost = cost + self.costfunction()
+                cost = cost + self.costfunction(idat=idat)
 
             ## update dw
             for layer in self.layer[1:self.nlayer]:
